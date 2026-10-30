@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agglomerative Clustering Lab | Customer Segmentation</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--ink:#172033;--muted:#65728a;--accent:#3157d5;--line:#dce4f0}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Inter,Arial,sans-serif;color:var(--ink)}
+header{background:linear-gradient(120deg,#142c62,#3157d5);color:white;padding:32px 5vw}
+header .eyebrow{letter-spacing:.12em;text-transform:uppercase;font-size:.78rem;opacity:.8}
+header h1{margin:8px 0;font-size:clamp(1.7rem,4vw,2.7rem)}header p{max-width:850px;line-height:1.6;margin-bottom:0;color:#e5ecff}
+main{max-width:1200px;margin:24px auto;padding:0 18px 48px}
+.controls,.card,.metric{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 5px 18px #1d31500a}
+.controls{padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px;align-items:end}
+label{display:block;font-weight:700;font-size:.9rem;margin-bottom:8px}select,input{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:9px;background:white;color:var(--ink)}
+input[type=range]{padding:0;accent-color:var(--accent)}button{border:0;border-radius:9px;background:var(--accent);color:#fff;padding:11px 16px;font-weight:700;cursor:pointer}button.secondary{background:#e8edfb;color:#2343a5}
+.small{font-size:.82rem;color:var(--muted);line-height:1.5}.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin:18px 0}
+.metric{padding:17px}.metric span{display:block;color:var(--muted);font-size:.85rem}.metric strong{display:block;font-size:1.65rem;margin-top:7px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-top:18px}.card{padding:18px;min-width:0}.card h2{font-size:1.08rem;margin:0 0 6px}.plot{height:410px;width:100%}
+table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line)}th{background:#f3f6fc} .table-wrap{overflow:auto}
+.demo-controls{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.demo-controls button{min-width:80px}.step{font-weight:700;color:#2343a5}
+footer{color:var(--muted);text-align:center;padding:25px;font-size:.85rem}
+.status{padding:10px 12px;border-radius:10px;background:#edf3ff;color:#24449c;margin-top:14px}.error{background:#fff0f0;color:#9b1c1c}
+@media(max-width:600px){header{padding:26px 20px}.plot{height:340px}.card{padding:13px}}
+</style>
+</head>
+<body>
+<header>
+ <div class="eyebrow">PGD Data Science & Machine Learning</div>
+ <h1>Agglomerative Hierarchical Clustering Lab</h1>
+ <p>An interactive customer-segmentation dashboard using Annual Income and Spending Score. Explore linkage choices, compare cluster counts, inspect cluster profiles, and learn how hierarchical merging works.</p>
+</header>
+<main>
+ <section class="controls">
+  <div><label for="k">Number of clusters: <span id="kval">5</span></label><input id="k" type="range" min="2" max="10" value="5"></div>
+  <div><label for="linkage">Linkage method</label><select id="linkage"><option value="ward">Ward</option><option value="complete">Complete</option><option value="average">Average</option><option value="single">Single</option></select></div>
+  <div><label for="source">Dataset status</label><div id="status" class="status">Loading Mall Customers dataset…</div></div>
+  <div><label>Actions</label><button id="refresh">Recalculate clustering</button></div>
+ </section>
+ <section class="metrics">
+  <div class="metric"><span>Total customers</span><strong id="total">—</strong></div>
+  <div class="metric"><span>Selected clusters</span><strong id="clusterCount">—</strong></div>
+  <div class="metric"><span>Silhouette score</span><strong id="silhouette">—</strong></div>
+  <div class="metric"><span>Linkage method</span><strong id="metricLinkage">Ward</strong></div>
+ </section>
+ <section class="grid">
+  <article class="card"><h2>Customer Segmentation</h2><p class="small">Each point is a customer. Colors represent assigned clusters.</p><div id="scatter" class="plot"></div></article>
+  <article class="card"><h2>Cluster Size</h2><p class="small">Number of customers assigned to each cluster.</p><div id="sizes" class="plot"></div></article>
+  <article class="card"><h2>Cluster Profiles</h2><p class="small">Mean annual income and spending score for each cluster.</p><div id="profiles" class="plot"></div></article>
+  <article class="card"><h2>How to interpret the result</h2><p class="small">Use the cluster profile table to compare groups. For example, a group with high average income and high spending score may represent a valuable marketing segment. A high silhouette score indicates better separation under this metric, but it should not be the only basis for choosing a model.</p><div id="interpretation" class="status">Waiting for clustering result…</div></article>
+ </section>
+ <section class="card" style="margin-top:18px">
+  <h2>Cluster Summary Table</h2><p class="small">The values update when you change the cluster count or linkage method.</p>
+  <div class="table-wrap"><table id="summary"><thead><tr><th>Cluster</th><th>Customers</th><th>Avg. Annual Income (k$)</th><th>Avg. Spending Score</th></tr></thead><tbody></tbody></table></div>
+ </section>
+ <section class="card" style="margin-top:18px">
+  <h2>Step-by-Step Hierarchical Clustering (8 sample points)</h2>
+  <p class="small">This teaching demo shows how clusters merge one pair at a time. It is a small illustrative dataset, separate from the 200-customer dataset above.</p>
+  <div class="demo-controls">
+   <button class="secondary" id="resetDemo">Reset</button><button class="secondary" id="prevDemo">Prev</button><button id="nextDemo">Next</button><button class="secondary" id="playDemo">Play</button>
+  </div>
+  <div class="step" id="demoStep">Step 0 of 7</div><div id="demoPlot" class="plot"></div><div id="demoMatrix" class="table-wrap"></div>
+ </section>
+ <section class="card" style="margin-top:18px">
+  <h2>Methodology</h2>
+  <ol class="small">
+   <li>Use Annual Income and Spending Score as the two clustering features.</li>
+   <li>Calculate pairwise distances and merge the closest clusters according to the selected linkage rule.</li>
+   <li>Cut the resulting hierarchy to obtain the selected number of clusters.</li>
+   <li>Compare the result using cluster profiles, cluster sizes, scatter plots, and the silhouette score.</li>
+  </ol>
+  <p class="small"><b>Note:</b> This is a browser-based educational implementation. Small differences from Python/scikit-learn may occur because implementation details and distance/update rules can differ. For formal numerical results, use the accompanying Colab notebook as the primary analysis.</p>
+ </section>
+</main>
+<footer>Agglomerative Clustering Lab · Mall Customers Dataset · Built for educational use</footer>
+<script>
+const DATA_URL='https://raw.githubusercontent.com/campusx-official/agglomerative-hierarchical-clustering-demo/main/hierarchical-clustering-with-python-and-scikit-learn-shopping-data.csv';
+let customers=[], currentLabels=[], merges=[], demoTimer=null, demoStep=0;
+const $=id=>document.getElementById(id);
+function setStatus(msg,error=false){$('status').textContent=msg;$('status').className='status'+(error?' error':'');}
+function euclidean(a,b){return Math.sqrt(a.reduce((s,v,i)=>s+(v-b[i])**2,0));}
+function clusterDistance(A,B,method,points){
+ if(method==='single'){let m=Infinity;for(const i of A)for(const j of B)m=Math.min(m,euclidean(points[i],points[j]));return m;}
+ if(method==='complete'){let m=0;for(const i of A)for(const j of B)m=Math.max(m,euclidean(points[i],points[j]));return m;}
+ if(method==='average'){let s=0,n=0;for(const i of A)for(const j of B){s+=euclidean(points[i],points[j]);n++;}return s/n;}
+ // Ward's minimum variance increase
+ const centroid=C=>points[C].reduce((acc,p)=>acc.map((v,i)=>v+p[i]/C.length),[0,0]);
+ const ca=centroid(A),cb=centroid(B);
+ return Math.sqrt((A.length*B.length)/(A.length+B.length))*euclidean(ca,cb);
+}
+function agglomerate(points,method){
+ let clusters=points.map((_,i)=>[i]), tree=[];
+ while(clusters.length>1){
+  let bestI=0,bestJ=1,best=Infinity;
+  for(let i=0;i<clusters.length;i++)for(let j=i+1;j<clusters.length;j++){
+   const d=clusterDistance(clusters[i],clusters[j],method,points);
+   if(d<best){best=d;bestI=i;bestJ=j;}
+  }
+  const a=clusters[bestI],b=clusters[bestJ], merged=a.concat(b);
+  tree.push({a:a.slice(),b:b.slice(),merged:merged.slice(),distance:best});
+  clusters=clusters.filter((_,i)=>i!==bestI&&i!==bestJ);clusters.push(merged);
+ }
+ return tree;
+}
+function labelsAtK(tree,n,k){
+ let clusters=Array.from({length:n},(_,i)=>[i]);
+ const mergesNeeded=n-k;
+ for(let t=0;t<mergesNeeded;t++){
+  const m=tree[t];
+  const ai=clusters.findIndex(c=>sameSet(c,m.a)),bi=clusters.findIndex(c=>sameSet(c,m.b));
+  if(ai>=0&&bi>=0){const merged=clusters[ai].concat(clusters[bi]);clusters=clusters.filter((_,i)=>i!==ai&&i!==bi);clusters.push(merged);}
+  else {
+   // Fallback: merge the two clusters with the largest overlap with the recorded merge
+   const involved=clusters.filter(c=>c.some(x=>m.merged.includes(x)));
+   if(involved.length>=2){clusters=clusters.filter(c=>!involved.includes(c));clusters.push(involved.flat());}
+  }
+ }
+ const labels=new Array(n);clusters.forEach((c,id)=>c.forEach(i=>labels[i]=id));return labels;
+}
+function sameSet(a,b){return a.length===b.length&&a.every(x=>b.includes(x));}
+function silhouette(points,labels){
+ const uniq=[...new Set(labels)];if(uniq.length<2||uniq.length>=points.length)return NaN;
+ const dist=points.map((p,i)=>points.map((q,j)=>i===j?0:euclidean(p,q)));
+ let total=0;
+ for(let i=0;i<points.length;i++){
+  const own=labels[i],same=[],other={};
+  for(let j=0;j<points.length;j++)if(i!==j){if(labels[j]===own)same.push(dist[i][j]);else{(other[labels[j]]??=[]).push(dist[i][j]);}}
+  const a=same.length?same.reduce((x,y)=>x+y,0)/same.length:0;
+  const bs=Object.values(other).map(v=>v.reduce((x,y)=>x+y,0)/v.length);const b=bs.length?Math.min(...bs):0;
+  total+=(Math.max(a,b)===0?0:(b-a)/Math.max(a,b));
+ }
+ return total/points.length;
+}
+function render(){
+ if(!customers.length)return;
+ const k=+$('k').value,method=$('linkage').value;
+ $('kval').textContent=k;$('metricLinkage').textContent=method[0].toUpperCase()+method.slice(1);
+ const pts=customers.map(d=>[d.income,d.score]);const tree=agglomerate(pts,method);merges=tree;
+ const labels=labelsAtK(tree,pts.length,k);currentLabels=labels;
+ const groups=[...new Set(labels)].sort((a,b)=>a-b);
+ const summary=groups.map(g=>{const rows=customers.filter((_,i)=>labels[i]===g);return {g,count:rows.length,income:rows.reduce((s,r)=>s+r.income,0)/rows.length,score:rows.reduce((s,r)=>s+r.score,0)/rows.length};});
+ $('total').textContent=customers.length;$('clusterCount').textContent=groups.length;
+ $('silhouette').textContent=silhouette(pts,labels).toFixed(3);
+ const colors=['#3157d5','#e45756','#2ca58d','#f2a541','#8c61c9','#4b9cd3','#b85c38','#719b42','#d45087','#6c757d'];
+ const traces=groups.map(g=>({x:customers.filter((_,i)=>labels[i]===g).map(d=>d.income),y:customers.filter((_,i)=>labels[i]===g).map(d=>d.score),mode:'markers',type:'scatter',name:'Cluster '+(g+1),marker:{size:9,color:colors[g%colors.length],opacity:.82},text:customers.filter((_,i)=>labels[i]===g).map(d=>`Income: ${d.income}<br>Spending: ${d.score}`),hovertemplate:'%{text}<extra></extra>'}));
+ Plotly.react('scatter',traces,{margin:{l:55,r:15,t:15,b:55},xaxis:{title:'Annual Income (k$)'},yaxis:{title:'Spending Score (1-100)'},legend:{orientation:'h',y:-.22},paper_bgcolor:'white',plot_bgcolor:'white'});
+ Plotly.react('sizes',[{x:summary.map(s=>'Cluster '+(s.g+1)),y:summary.map(s=>s.count),type:'bar',marker:{color:summary.map(s=>colors[s.g%colors.length])},text:summary.map(s=>s.count),textposition:'auto'}],{margin:{l:45,r:10,t:15,b:70},yaxis:{title:'Customers'},paper_bgcolor:'white',plot_bgcolor:'white'});
+ Plotly.react('profiles',[
+  {x:summary.map(s=>'Cluster '+(s.g+1)),y:summary.map(s=>s.income),name:'Avg Income',type:'bar'},
+  {x:summary.map(s=>'Cluster '+(s.g+1)),y:summary.map(s=>s.score),name:'Avg Spending Score',type:'bar'}
+ ],{barmode:'group',margin:{l:45,r:10,t:15,b:70},yaxis:{title:'Average value'},legend:{orientation:'h',y:-.22},paper_bgcolor:'white',plot_bgcolor:'white'});
+ $('summary').querySelector('tbody').innerHTML=summary.map(s=>`<tr><td>${s.g+1}</td><td>${s.count}</td><td>${s.income.toFixed(2)}</td><td>${s.score.toFixed(2)}</td></tr>`).join('');
+ const top=summary.slice().sort((a,b)=>b.score-a.score)[0];
+ $('interpretation').textContent=`Cluster ${top.g+1} has the highest average spending score (${top.score.toFixed(2)}). Review its average income and customer count before drawing marketing conclusions.`;
+}
+async function loadData(){
+ try{
+  const response=await fetch(DATA_URL);if(!response.ok)throw new Error('Dataset request failed');
+  const csv=await response.text();
+  const parsed=Papa.parse(csv,{header:true,dynamicTyping:true,skipEmptyLines:true});
+  const rows=parsed.data;
+  const incomeKey=Object.keys(rows[0]||{}).find(k=>k.trim().toLowerCase()==='annual income (k$)');
+  const scoreKey=Object.keys(rows[0]||{}).find(k=>k.trim().toLowerCase()==='spending score (1-100)');
+  if(!incomeKey||!scoreKey)throw new Error('Expected feature columns were not found');
+  customers=rows.map(r=>({income:Number(r[incomeKey]),score:Number(r[scoreKey])})).filter(r=>Number.isFinite(r.income)&&Number.isFinite(r.score));
+  if(customers.length<3)throw new Error('Dataset did not contain enough valid rows');
+  setStatus(`Loaded ${customers.length} customers successfully.`);render();renderDemo();
+ }catch(e){
+  setStatus('Could not load dataset. Check internet access or try again. '+e.message,true);
+  $('interpretation').textContent='Dataset failed to load. The site fetches the original public CSV from GitHub.';
+ }
+}
+$('k').addEventListener('input',render);$('linkage').addEventListener('change',render);$('refresh').addEventListener('click',render);
+
+// Small eight-point teaching demo, with Prev/Next/Play/Reset and a distance matrix.
+const demoPoints=[[1,1],[1.5,1.8],[2,1.2],[3,3.2],[3.5,4],[5,1],[5.5,1.8],[6,4]];
+let demoTree=[];
+function renderDemo(){
+ const tree=agglomerate(demoPoints,'ward');demoTree=tree;
+ const clusters=demoClustersAt(demoStep);
+ const colors=['#3157d5','#e45756','#2ca58d','#f2a541','#8c61c9','#4b9cd3','#b85c38','#719b42'];
+ const traces=clusters.map((c,i)=>({x:c.map(id=>demoPoints[id][0]),y:c.map(id=>demoPoints[id][1]),mode:'markers+text',type:'scatter',name:'Group '+(i+1),text:c.map(id=>String(id+1)),textposition:'top center',marker:{size:13,color:colors[i%colors.length]},hovertemplate:'Point %{text}<extra></extra>'}));
+ Plotly.react('demoPlot',traces,{margin:{l:45,r:10,t:10,b:45},xaxis:{title:'Feature 1'},yaxis:{title:'Feature 2'},legend:{orientation:'h',y:-.2},paper_bgcolor:'white',plot_bgcolor:'white'});
+ $('demoStep').textContent=`Step ${demoStep} of ${demoTree.length}`;
+ const dist=demoPoints.map(a=>demoPoints.map(b=>euclidean(a,b)));
+ $('demoMatrix').innerHTML='<table><thead><tr><th>Point</th>'+demoPoints.map((_,i)=>`<th>${i+1}</th>`).join('')+'</tr></thead><tbody>'+dist.map((row,i)=>`<tr><th>${i+1}</th>${row.map(v=>`<td>${v.toFixed(1)}</td>`).join('')}</tr>`).join('')+'</tbody></table>';
+}
+function demoClustersAt(step){
+ let clusters=demoPoints.map((_,i)=>[i]);
+ for(let t=0;t<step;t++){const m=demoTree[t];const ai=clusters.findIndex(c=>sameSet(c,m.a)),bi=clusters.findIndex(c=>sameSet(c,m.b));if(ai>=0&&bi>=0){const merged=clusters[ai].concat(clusters[bi]);clusters=clusters.filter((_,i)=>i!==ai&&i!==bi);clusters.push(merged);}}
+ return clusters;
+}
+$('resetDemo').onclick=()=>{if(demoTimer){clearInterval(demoTimer);demoTimer=null;}$('playDemo').textContent='Play';demoStep=0;renderDemo();};
+$('prevDemo').onclick=()=>{if(demoTimer){clearInterval(demoTimer);demoTimer=null;}$('playDemo').textContent='Play';demoStep=Math.max(0,demoStep-1);renderDemo();};
+$('nextDemo').onclick=()=>{if(demoTimer){clearInterval(demoTimer);demoTimer=null;}$('playDemo').textContent='Play';demoStep=Math.min(7,demoStep+1);renderDemo();};
+$('playDemo').onclick=()=>{if(demoTimer){clearInterval(demoTimer);demoTimer=null;$('playDemo').textContent='Play';return;}$('playDemo').textContent='Pause';demoTimer=setInterval(()=>{if(demoStep>=7){clearInterval(demoTimer);demoTimer=null;$('playDemo').textContent='Play';return;}demoStep++;renderDemo();},1100);};
+loadData();
+</script>
+</body>
+</html>
